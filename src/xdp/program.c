@@ -1031,6 +1031,7 @@ typedef struct _XDP_PROGRAM_OBJECT {
         struct {
             UINT32 SharingEnabled : 1;
             UINT32 IsMetaProgram : 1;
+            UINT32 BindAllQueues : 1;
         };
         UINT32 Value;
     } Flags;
@@ -1869,7 +1870,7 @@ XdpIrpCreateProgram(
     NTSTATUS Status;
     CONST UINT32 ValidFlags =
         XDP_CREATE_PROGRAM_FLAG_GENERIC | XDP_CREATE_PROGRAM_FLAG_NATIVE |
-        XDP_CREATE_PROGRAM_FLAG_SHARE;
+        XDP_CREATE_PROGRAM_FLAG_SHARE | XDP_CREATE_PROGRAM_ALL_QUEUES;
 
     if (Disposition != FILE_CREATE || InputBufferLength < sizeof(*Params)) {
         Status = STATUS_INVALID_PARAMETER;
@@ -1906,6 +1907,7 @@ XdpIrpCreateProgram(
         goto Exit;
     }
 
+
     Status =
         XdpCaptureProgram(Params->Rules, Params->RuleCount, Irp->RequestorMode, &ProgramObject);
     if (!NT_SUCCESS(Status)) {
@@ -1914,6 +1916,34 @@ XdpIrpCreateProgram(
 
     if (Params->Flags & XDP_CREATE_PROGRAM_FLAG_SHARE) {
         ProgramObject->Flags.SharingEnabled = TRUE;
+    }
+
+
+    if (Params->Flags & XDP_CREATE_PROGRAM_ALL_QUEUES) {
+        ProgramObject->Flags.BindAllQueues = TRUE;
+    }
+
+    if (ProgramObject->Flags.BindAllQueues) {
+        XDP_IFSET_HANDLE IfSetHandle = XdpIfGetIfSetHandle(BindingHandle);
+        VOID *InterfaceOffloadHandle;
+        XDP_RSS_CAPABILITIES RssCapabilities;
+        UINT32 RssCapabilitiesSize = sizeof(RssCapabilities);
+        Status =
+            XdpIfOpenInterfaceOffloadHandle(
+                IfSetHandle, &Params->HookId, &InterfaceOffloadHandle);
+        if (!NT_SUCCESS(Status)) {
+            goto Exit;
+        }
+
+        Status =
+            XdpIfGetInterfaceOffloadCapabilities(
+                IfSetHandle, InterfaceOffloadHandle,
+                XdpOffloadRss, &RssCapabilities, &RssCapabilitiesSize);
+        if (!NT_SUCCESS(Status)) {
+            goto Exit;
+        }
+
+        XdpIfCloseInterfaceOffloadHandle(IfSetHandle, InterfaceOffloadHandle);
     }
 
     KeInitializeEvent(&WorkItem.CompletionEvent, NotificationEvent, FALSE);

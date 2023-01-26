@@ -43,6 +43,11 @@ extern "C" {
 //
 #define XDP_CREATE_PROGRAM_FLAG_SHARE   0x4
 
+//
+// Attach to all XDP queues on the interface.
+//
+#define XDP_CREATE_PROGRAM_ALL_QUEUES   0x8
+
 typedef
 HRESULT
 XDP_CREATE_PROGRAM_FN(
